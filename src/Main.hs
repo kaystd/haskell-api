@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Db
+import Views
 
 import Web.Scotty
 import Data.Monoid (mconcat)

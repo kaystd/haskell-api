@@ -59,13 +59,13 @@ findUserPassByLogin :: Pool Connection -> String -> IO (Maybe String)
 findUserPassByLogin pool login = do
   res <- liftIO $ fetch pool (Only login) "SELECT password FROM user WHERE login = ?"
   return $ password res
-    where password [(pwd)] = Just pwd
+    where password [pwd] = Just pwd
           password _ = Nothing
 
 -------------------------------------------------------------------------
 
-userList :: Pool Connection -> IO [User]
-userList pool = do
+getUsersList :: Pool Connection -> IO [User]
+getUsersList pool = do
   res <- fetchSimple pool
                      "SELECT login, userData, keyGost FROM user ORDER BY login ASC" {-:: IO [(TL.Text, TL.Text, TL.Text)]-}
   return $ map (\(login, userData, keyGost) -> User login userData keyGost) res
@@ -92,7 +92,7 @@ updateUser pool (Just (User login userData keyGost)) = do
 deleteUser :: Pool Connection -> TL.Text -> ActionT TL.Text IO (Maybe User)
 deleteUser pool login = do
   res <- liftIO $ execSqlT pool [login]
-                                "DELETE FROM user WHERE login = ?"
+                                "DELETE FROM user WHERE login = ? RETURNING login userData keyGost"
   return $ oneUser res
 
 -------------------------------------------------------------------------
