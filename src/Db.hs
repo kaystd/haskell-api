@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module Db where
+import Domain
 
 import GHC.Generics (Generic)
 import Database.PostgreSQL.Simple
