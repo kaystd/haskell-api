@@ -9,5 +9,5 @@ usersList :: [User] -> ActionM ()
 usersList users = json users
 
 viewUser :: Maybe User -> ActionM ()
-viewUser Nothing = json ()
+viewUser Nothing = json "Error"
 viewUser (Just user) = json user

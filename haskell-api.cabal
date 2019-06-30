@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                haskell-api
-version:             0.2.0
+version:             0.3.0
 synopsis:            haskell REST-API
 -- description:         
 homepage:            https://github.com/kaystd/haskell-api

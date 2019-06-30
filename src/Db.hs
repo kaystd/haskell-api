@@ -67,32 +67,32 @@ findUserPassByLogin pool login = do
 getUsersList :: Pool Connection -> IO [User]
 getUsersList pool = do
   res <- fetchSimple pool
-                     "SELECT login, userData, keyGost FROM user ORDER BY login ASC" {-:: IO [(TL.Text, TL.Text, TL.Text)]-}
+                     "SELECT login, user_data, key_gost FROM users ORDER BY login ASC" {-:: IO [(TL.Text, TL.Text, TL.Text)]-}
   return $ map (\(login, userData, keyGost) -> User login userData keyGost) res
 
 findUser :: Pool Connection -> TL.Text -> IO (Maybe User)
 findUser pool login = do
-  res <- fetch pool (Only login) "SELECT login, userData, keyGost FROM user WHERE login = ?"
+  res <- fetch pool (Only login) "SELECT login, user_data, key_gost FROM users WHERE login = ?"
   return $ oneUser res
 
 addUser :: Pool Connection -> Maybe RegUser -> ActionT TL.Text IO (Maybe User)
 addUser pool Nothing = return Nothing
 addUser pool (Just (RegUser login password userData keyGost)) = do
   res <- liftIO $ execSqlT pool [login, (TL.pack $ md5s $ Str $ TL.unpack password), userData, keyGost]
-                                "INSERT INTO user (login, password, userData, keyGost) VALUES (?, ?, ?, ?) RETURNING login userData keyGost"
+                                "INSERT INTO users (login, password, user_data, key_gost) VALUES (?, ?, ?, ?) RETURNING login, user_data, key_gost"
   return $ oneUser res
 
 updateUser :: Pool Connection -> Maybe User -> ActionT TL.Text IO (Maybe User)
 updateUser pool Nothing = return Nothing
 updateUser pool (Just (User login userData keyGost)) = do
   res <- liftIO $ execSqlT pool [userData, keyGost, login]
-                                "UPDATE user SET userData = ?, keyGost = ? WHERE login = ? RETURNING login userData keyGost"
+                                "UPDATE users SET user_data = ?, key_gost = ? WHERE login = ? RETURNING login, user_data, key_gost"
   return $ oneUser res
 
 deleteUser :: Pool Connection -> TL.Text -> ActionT TL.Text IO (Maybe User)
 deleteUser pool login = do
   res <- liftIO $ execSqlT pool [login]
-                                "DELETE FROM user WHERE login = ? RETURNING login userData keyGost"
+                                "DELETE FROM users WHERE login = ? RETURNING login, user_data, key_gost"
   return $ oneUser res
 
 -------------------------------------------------------------------------
