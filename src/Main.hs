@@ -1,11 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+import Auth
 import Db
 import Domain
 import Views
 
 import Web.Scotty
 import Web.Scotty.Internal.Types (ActionT)
+import Network.Wai
+import Network.Wai.Middleware.HttpAuth
 import Control.Monad.IO.Class
 import Data.Pool
 import Data.Aeson
@@ -23,6 +26,20 @@ makeDbConfig conf = do
                     <*> user
                     <*> password
 
+protectedResources :: Request -> IO Bool
+protectedResources request = do
+  let path = pathInfo request
+  return $ protect path
+    where protect (p : _) =  p == "users"
+          protect _       =  False
+
+protectedAdminResources :: Request -> IO Bool
+protectedAdminResources request = do
+  let path = pathInfo request
+  return $ protect path
+    where protect (p : _) =  p == "admin"
+          protect _       =  False
+
 -------------------------------------------------------------------------
 
 main :: IO ()
@@ -34,21 +51,31 @@ main = do
     Just conf -> do
       pool <- createPool (newConn conf) close 1 60 10
       scotty 3000 $ do
+        middleware $ basicAuth (verifyAdminCredentials pool)
+                     "Haskell API Realm" { authIsProtected = protectedAdminResources }
+        middleware $ basicAuth' (verifyCredentials pool)
+                     "Haskell API Realm" { authIsProtected = protectedResources }
+
         post "/register" $ do
           maybeRegUser <- getRegUserParam
           maybeUser <- addUser pool maybeRegUser
           viewUser maybeUser
-        put "/change" $ do
-          maybeUser <- getUserParam
-          maybeResUser <- updateUser pool maybeUser
-          viewUser maybeResUser
-        get "/users" $ do
+
+        get "/admin/users" $ do
           users <- liftIO $ getUsersList pool
           usersList users
+
         get "/users/:user" $ do
           login <- param "user"
           maybeUser <- liftIO $ findUser pool login
           viewUser maybeUser
+
+        put "/users/:user" $ do
+          login <- param "user"
+          maybeUser <- getUserParam
+          maybeResUser <- updateUser pool login maybeUser
+          viewUser maybeResUser
+
         delete "/users/:user" $ do
           login <- param "user"
           maybeUser <- deleteUser pool login
@@ -61,7 +88,7 @@ getRegUserParam = do
   b <- body
   return $ (decode b :: Maybe RegUser)
 
-getUserParam :: ActionT TL.Text IO (Maybe User)
+getUserParam :: ActionT TL.Text IO (Maybe UserData)
 getUserParam = do
   b <- body
-  return $ (decode b :: Maybe User)
+  return $ (decode b :: Maybe UserData)

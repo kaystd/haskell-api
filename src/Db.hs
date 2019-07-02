@@ -57,9 +57,9 @@ execSqlT pool args sql = withResource pool ins
 
 findUserPassByLogin :: Pool Connection -> String -> IO (Maybe String)
 findUserPassByLogin pool login = do
-  res <- liftIO $ fetch pool (Only login) "SELECT password FROM user WHERE login = ?"
+  res <- liftIO $ fetch pool (Only login) "SELECT password FROM users WHERE login = ?"
   return $ password res
-    where password [pwd] = Just pwd
+    where password [Only pwd] = Just pwd
           password _ = Nothing
 
 -------------------------------------------------------------------------
@@ -67,7 +67,7 @@ findUserPassByLogin pool login = do
 getUsersList :: Pool Connection -> IO [User]
 getUsersList pool = do
   res <- fetchSimple pool
-                     "SELECT login, user_data, key_gost FROM users ORDER BY login ASC" {-:: IO [(TL.Text, TL.Text, TL.Text)]-}
+                     "SELECT login, user_data, key_gost FROM users ORDER BY login ASC"
   return $ map (\(login, userData, keyGost) -> User login userData keyGost) res
 
 findUser :: Pool Connection -> TL.Text -> IO (Maybe User)
@@ -79,12 +79,12 @@ addUser :: Pool Connection -> Maybe RegUser -> ActionT TL.Text IO (Maybe User)
 addUser pool Nothing = return Nothing
 addUser pool (Just (RegUser login password userData keyGost)) = do
   res <- liftIO $ execSqlT pool [login, (TL.pack $ md5s $ Str $ TL.unpack password), userData, keyGost]
-                                "INSERT INTO users (login, password, user_data, key_gost) VALUES (?, ?, ?, ?) RETURNING login, user_data, key_gost"
+                                "INSERT INTO users (login, password, user_data, key_gost) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING login, user_data, key_gost"
   return $ oneUser res
 
-updateUser :: Pool Connection -> Maybe User -> ActionT TL.Text IO (Maybe User)
-updateUser pool Nothing = return Nothing
-updateUser pool (Just (User login userData keyGost)) = do
+updateUser :: Pool Connection -> TL.Text -> Maybe UserData -> ActionT TL.Text IO (Maybe User)
+updateUser pool login Nothing = return Nothing
+updateUser pool login (Just (UserData userData keyGost)) = do
   res <- liftIO $ execSqlT pool [userData, keyGost, login]
                                 "UPDATE users SET user_data = ?, key_gost = ? WHERE login = ? RETURNING login, user_data, key_gost"
   return $ oneUser res
