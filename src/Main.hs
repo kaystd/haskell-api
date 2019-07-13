@@ -9,6 +9,7 @@ import Web.Scotty
 import Web.Scotty.Internal.Types (ActionT)
 import Network.Wai
 import Network.Wai.Middleware.HttpAuth
+import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Control.Monad.IO.Class
 import Data.Pool
 import Data.Aeson
@@ -53,6 +54,7 @@ main = do
       pool <- createPool (newConn conf) close 1 60 10
       migrateDb pool
       scotty 3000 $ do
+        middleware logStdoutDev
         middleware $ basicAuth' (verifyCredentials pool)
                      "Haskell API Realm" { authIsProtected = protectedResources }
 
