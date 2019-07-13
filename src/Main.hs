@@ -12,7 +12,9 @@ import Network.Wai.Middleware.HttpAuth
 import Control.Monad.IO.Class
 import Data.Pool
 import Data.Aeson
+import Control.Monad
 import Database.PostgreSQL.Simple
+import Database.PostgreSQL.Simple.Migration
 import qualified Data.Configurator as C
 import qualified Data.Configurator.Types as C
 import qualified Data.Text.Lazy as TL
@@ -25,6 +27,12 @@ makeDbConfig conf = do
   return $ DbConfig <$> name
                     <*> user
                     <*> password
+
+migrateDb :: Pool Connection -> IO ()
+migrateDb pool = withResource pool $ \conn ->
+  void $ withTransaction conn (runMigration (ctx conn))
+    where ctx = MigrationContext cmd False
+          cmd = MigrationCommands [ MigrationInitialization, MigrationDirectory "postgresql" ]
 
 protectedResources :: Request -> IO Bool
 protectedResources request = do
@@ -43,6 +51,7 @@ main = do
     Nothing -> putStrLn "No database configuration found, terminating..."
     Just conf -> do
       pool <- createPool (newConn conf) close 1 60 10
+      migrateDb pool
       scotty 3000 $ do
         middleware $ basicAuth' (verifyCredentials pool)
                      "Haskell API Realm" { authIsProtected = protectedResources }
