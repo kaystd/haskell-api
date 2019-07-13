@@ -10,23 +10,48 @@ import Control.Monad.IO.Class
 import Data.Pool
 import Data.Hash.MD5
 import Database.PostgreSQL.Simple
-import qualified Data.ByteString.Char8 as BC
+import Data.Aeson
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text as TI
+import qualified Data.Text.Lazy.Encoding as TLE
+import qualified Data.ByteString.Base64.Lazy as BBL
+import qualified Web.JWT as JWT
+import qualified Data.Map as Map
 
 verifyCredentials :: Pool Connection -> Request -> B.ByteString -> B.ByteString -> IO Bool
 verifyCredentials pool request login password = do
   pwd <- findUserPassByLogin pool (BC.unpack login)
-  return $ (compareUsers login request) && (comparePasswords pwd (BC.unpack password))
+  return $ comparePasswords pwd (BC.unpack password)
     where comparePasswords Nothing _          = False
           comparePasswords (Just p) password  = p == (md5s $ Str password)
-          compareUsers login request =  (TI.unpack . last . pathInfo $ request) == (BC.unpack login)
 
-verifyAdminCredentials :: Pool Connection -> B.ByteString -> B.ByteString -> IO Bool
-verifyAdminCredentials pool login password = do
-  pwd <- findUserPassByLogin pool (BC.unpack login)
-  return $ (compareUsers login) && (comparePasswords pwd (BC.unpack password))
-    where comparePasswords Nothing _          = False
-          comparePasswords (Just p) password  = p == (md5s $ Str password)
-          compareUsers login =  (BC.unpack login) == "Admin"
+extractBasicAuthLogin :: [(TL.Text, TL.Text)] -> Maybe TL.Text
+extractBasicAuthLogin headersList = case authTuple of
+  [(_, authData)] -> Just $ TLE.decodeUtf8 . BLC.takeWhile (/= ':') $ BBL.decodeLenient . TLE.encodeUtf8 . TL.strip $ TL.dropWhile (/= ' ') authData
+  _ -> Nothing
+  where authTuple = filter (\v -> (TL.unpack $ fst v) == "Authorization") headersList
+
+extractJwtLogin :: [(TL.Text, TL.Text)] -> Maybe TL.Text
+extractJwtLogin headersList = case authTuple of
+  [(_, authData)] -> extractLogin . decodeJwt . TL.strip $ TL.dropWhile (/= ' ') authData
+  _ -> Nothing
+  where authTuple = filter (\v -> (TL.unpack $ fst v) == "Authorization") headersList
+        extractLogin (Just jwt) = Just . TL.fromStrict . getValue $ (JWT.unClaimsMap $ JWT.unregisteredClaims jwt) Map.! "login"
+        extractLogin Nothing = Nothing
+        getValue (String value) = value
+
+encodeJwt :: Maybe TL.Text -> Maybe TL.Text
+encodeJwt Nothing = Nothing
+encodeJwt (Just login) = Just . TL.fromStrict $ JWT.encodeSigned key mempty cs
+  where cs = mempty { JWT.iss = JWT.stringOrURI $ TL.toStrict login
+                    , JWT.unregisteredClaims = JWT.ClaimsMap $ Map.fromList [("login", (String $ TL.toStrict login))]
+                    }
+        key = JWT.hmacSecret "secret-key"
+
+decodeJwt :: TL.Text -> Maybe JWT.JWTClaimsSet
+decodeJwt input = getClaims mJwt
+  where mJwt = JWT.decodeAndVerifySignature (JWT.hmacSecret "secret-key") $ TL.toStrict input
+        getClaims (Just jwt) = Just $ JWT.claims jwt
+        getClaims Nothing = Nothing

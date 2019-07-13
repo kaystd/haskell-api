@@ -30,14 +30,7 @@ protectedResources :: Request -> IO Bool
 protectedResources request = do
   let path = pathInfo request
   return $ protect path
-    where protect (p : _) =  p == "users"
-          protect _       =  False
-
-protectedAdminResources :: Request -> IO Bool
-protectedAdminResources request = do
-  let path = pathInfo request
-  return $ protect path
-    where protect (p : _) =  p == "admin"
+    where protect (p : _) =  p == "login"
           protect _       =  False
 
 -------------------------------------------------------------------------
@@ -51,8 +44,6 @@ main = do
     Just conf -> do
       pool <- createPool (newConn conf) close 1 60 10
       scotty 3000 $ do
-        middleware $ basicAuth (verifyAdminCredentials pool)
-                     "Haskell API Realm" { authIsProtected = protectedAdminResources }
         middleware $ basicAuth' (verifyCredentials pool)
                      "Haskell API Realm" { authIsProtected = protectedResources }
 
@@ -61,25 +52,46 @@ main = do
           maybeUser <- addUser pool maybeRegUser
           viewUser maybeUser
 
-        get "/admin/users" $ do
-          users <- liftIO $ getUsersList pool
-          usersList users
+        get "/login" $ do
+          headersList <- headers
+          viewAccessToken . encodeJwt . extractBasicAuthLogin $ headersList
 
-        get "/users/:user" $ do
-          login <- param "user"
-          maybeUser <- liftIO $ findUser pool login
-          viewUser maybeUser
+        get "/users" $ do
+          headersList <- headers
+          maybeLogin <- pure $ extractJwtLogin $ headersList
+          case maybeLogin of
+            Just "Admin" -> do
+              users <- liftIO $ getUsersList pool
+              usersList users
+            _ -> viewError
 
-        put "/users/:user" $ do
-          login <- param "user"
+        get "/user" $ do
+          headersList <- headers
+          maybeLogin <- pure $ extractJwtLogin $ headersList
+          case maybeLogin of
+            Just login -> do
+              maybeUser <- liftIO $ findUser pool login
+              viewUser maybeUser
+            Nothing -> viewError
+
+        put "/user" $ do
           maybeUser <- getUserParam
-          maybeResUser <- updateUser pool login maybeUser
-          viewUser maybeResUser
+          headersList <- headers
+          maybeLogin <- pure $ extractJwtLogin $ headersList
+          case maybeLogin of
+            Just login -> do
+              maybeResUser <- updateUser pool login maybeUser
+              viewUser maybeResUser
+            Nothing -> viewError
 
-        delete "/users/:user" $ do
-          login <- param "user"
-          maybeUser <- deleteUser pool login
-          viewUser maybeUser
+        delete "/user" $ do
+          headersList <- headers
+          maybeLogin <- pure $ extractJwtLogin $ headersList
+          case maybeLogin of
+            Just login -> do
+              maybeUser <- deleteUser pool login
+              viewUser maybeUser
+            Nothing -> viewError
 
 -------------------------------------------------------------------------
 

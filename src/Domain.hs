@@ -52,3 +52,15 @@ instance ToJSON UserData where
     object [ "userData" .= userData
            , "keyGost"  .= keyGost
            ]
+
+data AccessToken = AccessToken Text
+  deriving (Show)
+
+instance FromJSON AccessToken where
+  parseJSON (Object v) = AccessToken <$>
+                         v .: "accessToken"
+
+instance ToJSON AccessToken where
+  toJSON (AccessToken accessToken) =
+    object [ "accessToken" .= accessToken
+           ]
