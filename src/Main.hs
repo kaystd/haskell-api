@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 import Auth
 import Db
@@ -8,26 +9,47 @@ import Views
 import Web.Scotty
 import Web.Scotty.Internal.Types (ActionT)
 import Network.Wai
+import Network.Wai.Handler.Warp
 import Network.Wai.Middleware.HttpAuth
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Control.Monad.IO.Class
 import Data.Pool
 import Data.Aeson
+import Data.Word
+import GHC.Generics (Generic)
 import Control.Monad
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Migration
+import Data.Streaming.Network.Internal
 import qualified Data.Configurator as C
 import qualified Data.Configurator.Types as C
 import qualified Data.Text.Lazy as TL
 
+data AppConfig = AppConfig
+  { dbConfig :: DbConfig
+  , appHost :: String
+  , appPort :: Int
+  , secret :: String
+  } deriving (Show, Generic)
+
+-------------------------------------------------------------------------
+
 makeDbConfig :: C.Config -> IO (Maybe Db.DbConfig)
 makeDbConfig conf = do
-  name <- C.lookup conf "database.name" :: IO (Maybe String)
-  user <- C.lookup conf "database.user" :: IO (Maybe String)
-  password <- C.lookup conf "database.password" :: IO (Maybe String)
-  return $ DbConfig <$> name
-                    <*> user
-                    <*> password
+  host <- C.lookup conf "database.host"
+  port <- C.lookup conf "database.port"
+  name <- C.lookup conf "database.name"
+  user <- C.lookup conf "database.user"
+  password <- C.lookup conf "database.password"
+  return $ DbConfig <$> host <*> port <*> name <*> user <*> password
+
+makeAppConfig :: C.Config -> IO (Maybe AppConfig)
+makeAppConfig conf = do
+  db <- makeDbConfig conf
+  host <- C.lookup conf "app.host"
+  port <- C.lookup conf "app.port"
+  secret <- C.lookup conf "app.secret"
+  return $ AppConfig <$> db <*> host <*> port <*> secret
 
 migrateDb :: Pool Connection -> IO ()
 migrateDb pool = withResource pool $ \conn ->
@@ -47,13 +69,13 @@ protectedResources request = do
 main :: IO ()
 main = do
   loadedConf <- C.load [C.Required "application.conf"]
-  dbConf <- makeDbConfig loadedConf
-  case dbConf of
-    Nothing -> putStrLn "No database configuration found, terminating..."
+  appConf <- makeAppConfig loadedConf
+  case appConf of
+    Nothing -> putStrLn "No configuration found, terminating..."
     Just conf -> do
-      pool <- createPool (newConn conf) close 1 60 10
+      pool <- createPool (newConn $ dbConfig conf) close 1 60 10
       migrateDb pool
-      scotty 3000 $ do
+      scottyOpts (Options 1 (setPort (appPort conf) $ setHost (Host $ appHost conf) defaultSettings)) $ do
         middleware logStdoutDev
         middleware $ basicAuth' (verifyCredentials pool)
                      "Haskell API Realm" { authIsProtected = protectedResources }
@@ -65,11 +87,11 @@ main = do
 
         get "/login" $ do
           headersList <- headers
-          viewAccessToken . encodeJwt . extractBasicAuthLogin $ headersList
+          viewAccessToken $ encodeJwt (TL.pack $ secret conf) $ extractBasicAuthLogin headersList
 
         get "/users" $ do
           headersList <- headers
-          maybeLogin <- pure $ extractJwtLogin $ headersList
+          maybeLogin <- pure $ extractJwtLogin (TL.pack $ secret conf) headersList
           case maybeLogin of
             Just "Admin" -> do
               users <- liftIO $ getUsersList pool
@@ -78,7 +100,7 @@ main = do
 
         get "/user" $ do
           headersList <- headers
-          maybeLogin <- pure $ extractJwtLogin $ headersList
+          maybeLogin <- pure $ extractJwtLogin (TL.pack $ secret conf) headersList
           case maybeLogin of
             Just login -> do
               maybeUser <- liftIO $ findUser pool login
@@ -88,7 +110,7 @@ main = do
         put "/user" $ do
           maybeUser <- getUserParam
           headersList <- headers
-          maybeLogin <- pure $ extractJwtLogin $ headersList
+          maybeLogin <- pure $ extractJwtLogin (TL.pack $ secret conf) headersList
           case maybeLogin of
             Just login -> do
               maybeResUser <- updateUser pool login maybeUser
@@ -97,7 +119,7 @@ main = do
 
         delete "/user" $ do
           headersList <- headers
-          maybeLogin <- pure $ extractJwtLogin $ headersList
+          maybeLogin <- pure $ extractJwtLogin (TL.pack $ secret conf) headersList
           case maybeLogin of
             Just login -> do
               maybeUser <- deleteUser pool login

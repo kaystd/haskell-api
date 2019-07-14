@@ -10,10 +10,13 @@ import Control.Monad.IO.Class
 import Database.PostgreSQL.Simple
 import Data.Pool
 import Data.Hash.MD5
+import Data.Word
 import qualified Data.Text.Lazy as TL
 
 data DbConfig = DbConfig
-  { dbName :: String
+  { dbHost :: String
+  , dbPort :: Word16
+  , dbName :: String
   , dbUser :: String
   , dbPassword :: String
   } deriving (Show, Generic)
@@ -22,7 +25,9 @@ data DbConfig = DbConfig
 
 newConn :: DbConfig -> IO Connection
 newConn conf = connect defaultConnectInfo
-                       { connectUser = dbUser conf
+                       { connectHost = dbHost conf
+                       , connectPort = dbPort conf
+                       , connectUser = dbUser conf
                        , connectPassword = dbPassword conf
                        , connectDatabase = dbName conf
                        }

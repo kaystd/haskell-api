@@ -22,6 +22,7 @@ executable haskell-api
   -- other-extensions:    
   build-depends:       base                         >= 4.8          && < 4.9
                      , scotty                       >= 0.11.4       && < 0.12
+                     , warp                         >= 3.2          && < 3.3
                      , bytestring                   >= 0.9          && < 0.11
                      , text                         >= 1.2          && < 2.0
                      , configurator                 >= 0.3          && < 0.4
@@ -37,5 +38,6 @@ executable haskell-api
                      , base64-bytestring            >= 1.0          && < 2.0
                      , jwt                          >= 0.10         && < 0.11
                      , containers                   >= 0.6          && < 0.7
+                     , streaming-commons            >= 0.2.1        && < 0.2.2
   hs-source-dirs:      src
   default-language:    Haskell2010

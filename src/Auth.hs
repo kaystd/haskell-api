@@ -33,25 +33,25 @@ extractBasicAuthLogin headersList = case authTuple of
   _ -> Nothing
   where authTuple = filter (\v -> (TL.unpack $ fst v) == "Authorization") headersList
 
-extractJwtLogin :: [(TL.Text, TL.Text)] -> Maybe TL.Text
-extractJwtLogin headersList = case authTuple of
-  [(_, authData)] -> extractLogin . decodeJwt . TL.strip $ TL.dropWhile (/= ' ') authData
+extractJwtLogin :: TL.Text -> [(TL.Text, TL.Text)] -> Maybe TL.Text
+extractJwtLogin secret headersList = case authTuple of
+  [(_, authData)] -> extractLogin . decodeJwt secret $ TL.strip $ TL.dropWhile (/= ' ') authData
   _ -> Nothing
   where authTuple = filter (\v -> (TL.unpack $ fst v) == "Authorization") headersList
         extractLogin (Just jwt) = Just . TL.fromStrict . getValue $ (JWT.unClaimsMap $ JWT.unregisteredClaims jwt) Map.! "login"
         extractLogin Nothing = Nothing
         getValue (String value) = value
 
-encodeJwt :: Maybe TL.Text -> Maybe TL.Text
-encodeJwt Nothing = Nothing
-encodeJwt (Just login) = Just . TL.fromStrict $ JWT.encodeSigned key mempty cs
+encodeJwt :: TL.Text -> Maybe TL.Text -> Maybe TL.Text
+encodeJwt _ Nothing = Nothing
+encodeJwt secret (Just login) = Just . TL.fromStrict $ JWT.encodeSigned key mempty cs
   where cs = mempty { JWT.iss = JWT.stringOrURI $ TL.toStrict login
                     , JWT.unregisteredClaims = JWT.ClaimsMap $ Map.fromList [("login", (String $ TL.toStrict login))]
                     }
-        key = JWT.hmacSecret "secret-key"
+        key = JWT.hmacSecret $ TL.toStrict secret
 
-decodeJwt :: TL.Text -> Maybe JWT.JWTClaimsSet
-decodeJwt input = getClaims mJwt
-  where mJwt = JWT.decodeAndVerifySignature (JWT.hmacSecret "secret-key") $ TL.toStrict input
+decodeJwt :: TL.Text -> TL.Text -> Maybe JWT.JWTClaimsSet
+decodeJwt secret input = getClaims mJwt
+  where mJwt = JWT.decodeAndVerifySignature (JWT.hmacSecret $ TL.toStrict secret) $ TL.toStrict input
         getClaims (Just jwt) = Just $ JWT.claims jwt
         getClaims Nothing = Nothing
