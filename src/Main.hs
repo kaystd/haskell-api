@@ -7,6 +7,7 @@ import Web.Scotty
 import Web.Scotty.Internal.Types (ActionT)
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Network.Wai.Middleware.Cors
 import Network.Wai.Middleware.HttpAuth
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import Control.Monad.IO.Class
@@ -73,6 +74,7 @@ main = do
       pool <- createPool (newConn $ dbConfig conf) close 1 60 10
       migrateDb pool
       scottyOpts (Options 1 (setPort (appPort conf) $ setHost (Host $ appHost conf) defaultSettings)) $ do
+        middleware $ cors ( const $ Just (simpleCorsResourcePolicy {corsRequestHeaders = ["Authorization", "Content-Type"] }))
         middleware logStdoutDev
         middleware $ basicAuth' (verifyCredentials pool)
                      "Haskell API Realm" { authIsProtected = protectedResources }

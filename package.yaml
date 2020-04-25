@@ -27,6 +27,7 @@ dependencies:
   - transformers
   - MissingH
   - wai
+  - wai-cors
   - wai-extra
   - http-types
   - base64-bytestring
